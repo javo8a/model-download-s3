@@ -1,0 +1,111 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: model-sync-from-s3
+  annotations:
+    openshift.io/display-name: Sync model weights from S3 into a PVC
+    description: >-
+      Batch Job using the KServe storage initializer image (same idea as
+      https://github.com/opendatahub-io/kserve/blob/odh-v3.3/docs/samples/storage/pvc-init/job.yaml ).
+      Downloads an S3 prefix into an existing PVC.
+
+      Prerequisites:
+      - PVC already exists (claimName below).
+      - Secret with AWS-style credentials for S3 (keys AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY; optionally AWS_ENDPOINT_URL for MinIO/compatible,
+        AWS_DEFAULT_REGION).
+
+      Apply processed manifests:
+        oc process -f openshift/model-sync-from-s3-template.yaml \
+          --param-file=openshift/sample.env | oc apply -f -
+
+      Or substitute from your shell:
+        set -a && source openshift/sample.env && set +a
+        oc process -f openshift/model-sync-from-s3-template.yaml \
+          -p JOB_NAME="$JOB_NAME" \
+          ... | oc apply -f -
+objects:
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: "${JOB_NAME}"
+      labels:
+        app.kubernetes.io/name: model-storage-sync
+        app.kubernetes.io/component: pvc-init
+    spec:
+      parallelism: 1
+      completions: 1
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: model-storage-sync
+            app.kubernetes.io/component: pvc-init
+        spec:
+          serviceAccountName: "${SERVICE_ACCOUNT_NAME}"
+          restartPolicy: Never
+          volumes:
+            - name: pvc
+              persistentVolumeClaim:
+                claimName: "${PVC_CLAIM_NAME}"
+                readOnly: false
+          containers:
+            - name: storage-initializer
+              image: "${STORAGE_INITIALIZER_IMAGE}"
+              imagePullPolicy: IfNotPresent
+              args:
+                - "${S3_URI}"
+                - "${MOUNT_PATH}"
+              envFrom:
+                - secretRef:
+                    name: "${S3_CREDENTIALS_SECRET}"
+              env:
+                - name: HF_HUB_DISABLE_TELEMETRY
+                  value: "${HF_HUB_DISABLE_TELEMETRY}"
+              resources:
+                requests:
+                  cpu: "${CPU_REQUEST}"
+                  memory: "${MEMORY_REQUEST}"
+                limits:
+                  cpu: "${CPU_LIMIT}"
+                  memory: "${MEMORY_LIMIT}"
+              volumeMounts:
+                - name: pvc
+                  mountPath: "${MOUNT_PATH}"
+                  readOnly: false
+parameters:
+  - name: JOB_NAME
+    description: Kubernetes Job name (must be DNS-1123 compliant)
+    required: true
+  - name: PVC_CLAIM_NAME
+    description: Existing PersistentVolumeClaim to populate with model files
+    required: true
+  - name: S3_URI
+    description: >-
+      Source URI for the storage initializer, e.g. s3://my-bucket/path/to/model/
+    required: true
+  - name: MOUNT_PATH
+    description: Path inside the container / PVC where weights are written
+    value: "/mnt/models"
+  - name: SERVICE_ACCOUNT_NAME
+    description: ServiceAccount for the Job pod (needs permission to use the PVC)
+    required: true
+  - name: STORAGE_INITIALIZER_IMAGE
+    description: KServe / ODH storage initializer image
+    value: "quay.io/opendatahub/kserve-storage-initializer:v0.15-latest"
+  - name: S3_CREDENTIALS_SECRET
+    description: >-
+      Secret in the same namespace containing AWS_ACCESS_KEY_ID and
+      AWS_SECRET_ACCESS_KEY (and optional AWS_ENDPOINT_URL, AWS_DEFAULT_REGION)
+    required: true
+  - name: HF_HUB_DISABLE_TELEMETRY
+    description: Passed through for parity with HF-style jobs; harmless for pure S3
+    value: "1"
+  - name: CPU_REQUEST
+    value: "1"
+  - name: MEMORY_REQUEST
+    value: "20Gi"
+  - name: CPU_LIMIT
+    value: "1"
+  - name: MEMORY_LIMIT
+    value: "100Gi"

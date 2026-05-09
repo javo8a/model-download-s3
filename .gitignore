@@ -1,0 +1,18 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Local env files with secrets (sample.env in repo is the template)
+.env
+.env.*
+!.env.example
+*.local.env
+
+# Misc
+*.log
