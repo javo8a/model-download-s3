@@ -15,6 +15,10 @@ metadata:
         AWS_SECRET_ACCESS_KEY; optionally AWS_ENDPOINT_URL for MinIO/compatible,
         AWS_DEFAULT_REGION).
 
+      Resources: only memory request/limit are parameterized; CPU is left unset so
+      the cluster applies its defaults (add cpu under resources in the Job if you
+      need explicit CPU requests or limits).
+
       Apply processed manifests:
         oc process -f openshift/model-sync-from-s3-template.yaml \
           --param-file=openshift/sample.env | oc apply -f -
@@ -64,10 +68,8 @@ objects:
                   value: "${HF_HUB_DISABLE_TELEMETRY}"
               resources:
                 requests:
-                  cpu: "${CPU_REQUEST}"
                   memory: "${MEMORY_REQUEST}"
                 limits:
-                  cpu: "${CPU_LIMIT}"
                   memory: "${MEMORY_LIMIT}"
               volumeMounts:
                 - name: pvc
@@ -101,11 +103,13 @@ parameters:
   - name: HF_HUB_DISABLE_TELEMETRY
     description: Passed through for parity with HF-style jobs; harmless for pure S3
     value: "1"
-  - name: CPU_REQUEST
-    value: "1"
   - name: MEMORY_REQUEST
+    description: >-
+      Pod memory request; omit from --param-file and rely on template default, or
+      override with oc process -p MEMORY_REQUEST=...
     value: "20Gi"
-  - name: CPU_LIMIT
-    value: "1"
   - name: MEMORY_LIMIT
+    description: >-
+      Pod memory limit; omit from --param-file for default, or override with
+      oc process -p MEMORY_LIMIT=...
     value: "100Gi"
