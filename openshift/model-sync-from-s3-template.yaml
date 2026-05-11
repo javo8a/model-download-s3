@@ -12,8 +12,9 @@ metadata:
       Prerequisites:
       - PVC already exists (claimName below).
       - Secret with AWS-style credentials for S3 (keys AWS_ACCESS_KEY_ID,
-        AWS_SECRET_ACCESS_KEY; optionally AWS_ENDPOINT_URL for MinIO/compatible,
-        AWS_DEFAULT_REGION).
+        AWS_SECRET_ACCESS_KEY; optionally AWS_DEFAULT_REGION). Endpoint-related
+        keys can live in the secret or in template parameters below; explicit env
+        from this Job overrides duplicate keys from envFrom.
 
       Resources: only memory request/limit are parameterized; CPU is left unset so
       the cluster applies its defaults (add cpu under resources in the Job if you
@@ -22,6 +23,10 @@ metadata:
       Apply processed manifests:
         oc process -f openshift/model-sync-from-s3-template.yaml \
           --param-file=openshift/sample.env | oc apply -f -
+
+      Rendered YAML uses minimal quoting (e.g. s3:// URIs often appear unquoted);
+      that is valid and equivalent to quoted scalars. Use -o json | oc apply -f -
+      if you prefer JSON output.
 
       Or substitute from your shell:
         set -a && source openshift/sample.env && set +a
@@ -66,6 +71,14 @@ objects:
               env:
                 - name: HF_HUB_DISABLE_TELEMETRY
                   value: "${HF_HUB_DISABLE_TELEMETRY}"
+                - name: S3_USE_HTTPS
+                  value: "${S3_USE_HTTPS}"
+                - name: S3_ENDPOINT
+                  value: "${S3_ENDPOINT}"
+                - name: AWS_ENDPOINT_URL
+                  value: "${AWS_ENDPOINT_URL}"
+                - name: S3_VERIFY_SSL
+                  value: "${S3_VERIFY_SSL}"
               resources:
                 requests:
                   memory: "${MEMORY_REQUEST}"
@@ -98,8 +111,30 @@ parameters:
   - name: S3_CREDENTIALS_SECRET
     description: >-
       Secret in the same namespace containing AWS_ACCESS_KEY_ID and
-      AWS_SECRET_ACCESS_KEY (and optional AWS_ENDPOINT_URL, AWS_DEFAULT_REGION)
+      AWS_SECRET_ACCESS_KEY (and optional AWS_DEFAULT_REGION). Same-named keys
+      in explicit env below override values from this secret.
     required: true
+  - name: S3_USE_HTTPS
+    description: >-
+      Whether to use HTTPS for S3-compatible endpoints (e.g. 1/true). Leave empty
+      for default SDK behavior when using public AWS S3.
+    value: ""
+  - name: S3_ENDPOINT
+    description: >-
+      S3 API endpoint host (no scheme), for MinIO / on-cluster S3. Leave empty
+      for public AWS S3.
+    value: ""
+  - name: AWS_ENDPOINT_URL
+    description: >-
+      Full endpoint URL with scheme (e.g. https://minio.example:9000). Leave empty
+      for public AWS S3. This env entry overrides envFrom: duplicate the secret's
+      URL here if you also store AWS_ENDPOINT_URL in the credentials secret.
+    value: ""
+  - name: S3_VERIFY_SSL
+    description: >-
+      TLS certificate verification (e.g. 1/true or 0/false). Leave empty for default
+      SDK behavior.
+    value: ""
   - name: HF_HUB_DISABLE_TELEMETRY
     description: Passed through for parity with HF-style jobs; harmless for pure S3
     value: "1"

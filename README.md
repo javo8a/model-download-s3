@@ -20,7 +20,11 @@ Upstream reference: [ODH KServe `pvc-init` sample `job.yaml`](https://github.com
 
   - Required: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
   - Recommended: `AWS_DEFAULT_REGION`
-  - Optional (MinIO / on-cluster / custom endpoint): `AWS_ENDPOINT_URL`
+  - Optional S3 endpoint / TLS tuning: either set template parameters `S3_USE_HTTPS`, `S3_ENDPOINT`, `AWS_ENDPOINT_URL`, and `S3_VERIFY_SSL` (see [`openshift/model-sync-from-s3-template.yaml`](openshift/model-sync-from-s3-template.yaml)), **or** put `AWS_ENDPOINT_URL` (and any other keys your client reads) in the secret. Keys listed in both places use the **template / explicit env** value because it overrides `envFrom`.
+
+For **public AWS S3**, leave those four parameters empty (omit them from your param file so the template defaults apply).
+
+Explicit container `env` overrides `envFrom`, so an empty template value for `AWS_ENDPOINT_URL` still **replaces** `AWS_ENDPOINT_URL` from the secret. If you store the endpoint in the secret, set template parameter `AWS_ENDPOINT_URL` to the **same** URL (or edit the rendered manifest to drop that env entry).
 
 ## Quick start
 
@@ -53,6 +57,8 @@ Upstream reference: [ODH KServe `pvc-init` sample `job.yaml`](https://github.com
 
    Use **`--local`** so `oc process` does not need a live API connection to read the `Template`; omit `--local` if you prefer the server to expand the template.
 
+   **`S3_URI` and YAML quotes:** The template lists args as `"${S3_URI}"`, but YAML only uses those quotes while parsing the template. After substitution, the value is the plain string `s3://…`; `oc process -o yaml` then prints scalars in the minimal style (often **without** quotes). That output is still valid YAML and is what the API stores—same as a quoted string. If you prefer JSON (where strings are always quoted), run `oc process … -o json | oc apply -f -`.
+
 4. Watch the Job and logs:
 
    ```bash
@@ -74,9 +80,13 @@ All parameters can be set via `-p NAME=value` or a **`--param-file`** where each
 | `S3_CREDENTIALS_SECRET` | Secret name for `envFrom` (AWS-style keys) |
 | `STORAGE_INITIALIZER_IMAGE` | Container image (default ODH KServe storage initializer) |
 | `HF_HUB_DISABLE_TELEMETRY` | Extra env; default `1` |
-| `CPU_REQUEST`, `MEMORY_REQUEST`, `CPU_LIMIT`, `MEMORY_LIMIT` | Pod resources |
+| `S3_USE_HTTPS` | Optional; empty default for public AWS S3 |
+| `S3_ENDPOINT` | Optional S3-compatible API host (no `https://`); empty default for AWS |
+| `AWS_ENDPOINT_URL` | Optional full URL with scheme (e.g. MinIO); empty default for AWS |
+| `S3_VERIFY_SSL` | Optional TLS verify flag; empty default |
+| `MEMORY_REQUEST`, `MEMORY_LIMIT` | Pod memory request / limit |
 
-Defaults match the sample Job’s shape (single completion, initializer args `[source, dest]`). Tune CPU and memory for your model size and network.
+Defaults match the sample Job’s shape (single completion, initializer args `[source, dest]`). Tune memory for your model size and network.
 
 ## Shell substitution
 
